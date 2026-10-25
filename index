@@ -1,0 +1,399 @@
+<?php
+require_once __DIR__ . "/dbconfig.php";
+$message = "";
+$messageType = "success";
+
+if (isset($_GET["message"])) {
+    $messages = [
+        "developer_added" => "Developer added successfully!",
+        "project_added" => "Project added successfully!",
+        "updated" => "Record updated successfully!",
+        "deleted" => "Record deleted successfully!"
+    ];
+
+    if (isset($messages[$_GET["message"]])) {
+        $message = $messages[$_GET["message"]];
+    }
+}
+if ($_SERVER["REQUEST_METHOD"] === "POST"
+    && isset($_POST["add_developer"])) {
+
+    $name = trim($_POST["developer_name"] ?? "");
+    $email = trim($_POST["email"] ?? "");
+
+    if ($name === "" || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $message = "Enter a developer name and valid email.";
+        $messageType = "error";
+    } else {
+        try {
+            $stmt = $conn->prepare(
+                "INSERT INTO Developers (developer_name, email)
+                 VALUES (?, ?)"
+            );
+
+            $stmt->bind_param("ss", $name, $email);
+            $stmt->execute();
+            $stmt->close();
+
+            header("Location: index.php?message=developer_added");
+            exit;
+        } catch (mysqli_sql_exception $e) {
+            $message = "Could not add developer. Check your database.";
+            $messageType = "error";
+        }
+    }
+}
+
+if ($_SERVER["REQUEST_METHOD"] === "POST"
+    && isset($_POST["add_project"])) {
+
+    $projectName = trim($_POST["project_name"] ?? "");
+    $description = trim($_POST["description"] ?? "");
+    $developerId = filter_var(
+        $_POST["developer_id"] ?? "",
+        FILTER_VALIDATE_INT
+    );
+
+    if ($projectName === "" || !$developerId || $developerId < 1) {
+        $message = "Enter a project name and select a developer.";
+        $messageType = "error";
+    } else {
+        try {
+            $stmt = $conn->prepare(
+                "INSERT INTO Projects
+                 (project_name, description, developer_id)
+                 VALUES (?, ?, ?)"
+            );
+
+            $stmt->bind_param(
+                "ssi",
+                $projectName,
+                $description,
+                $developerId
+            );
+
+            $stmt->execute();
+            $stmt->close();
+
+            header("Location: index.php?message=project_added");
+            exit;
+        } catch (mysqli_sql_exception $e) {
+            $message = "Could not add project. Check the selected developer.";
+            $messageType = "error";
+        }
+    }
+}
+
+$developers = $conn->query(
+    "SELECT developer_id, developer_name, email
+     FROM Developers
+     ORDER BY developer_id"
+)->fetch_all(MYSQLI_ASSOC);
+
+$projects = $conn->query(
+    "SELECT p.project_id, p.project_name, p.description,
+            d.developer_name
+     FROM Projects p
+     INNER JOIN Developers d
+        ON p.developer_id = d.developer_id
+     ORDER BY p.project_id"
+)->fetch_all(MYSQLI_ASSOC);
+
+function h($value) {
+    return htmlspecialchars(
+        (string)$value,
+        ENT_QUOTES,
+        "UTF-8"
+    );
+}
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Web Development Business</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f2f4f8;
+            color: #222;
+            margin: 0;
+            padding: 25px;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: auto;
+        }
+
+        h1, h2 {
+            color: #174a7e;
+        }
+
+        .card {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        label {
+            display: block;
+            margin-top: 12px;
+            font-weight: bold;
+        }
+
+        input, select {
+            width: 100%;
+            max-width: 500px;
+            padding: 10px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        button, .button {
+            display: inline-block;
+            background: #1769aa;
+            color: white;
+            border: none;
+            padding: 9px 12px;
+            margin-top: 8px;
+            border-radius: 4px;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .edit {
+            background: #27834a;
+        }
+
+        .delete {
+            background: #c62828;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            background: white;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background: #e7eef7;
+        }
+
+        .notice {
+            background: #e0f4e5;
+            padding: 12px;
+            margin: 15px 0;
+        }
+
+        .error {
+            background: #ffe6e6;
+            color: #8b1111;
+        }
+
+        .inline-form {
+            display: inline;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+
+    <h1>Web Development Business</h1>
+    <p>Manage developers and their projects.</p>
+
+    <?php if ($message !== ""): ?>
+        <div class="notice <?= $messageType === "error" ? "error" : "" ?>">
+            <?= h($message) ?>
+        </div>
+    <?php endif; ?>
+
+    <section class="card">
+        <h2>Add Developer (Parent Entity)</h2>
+
+        <form method="POST" action="index.php">
+            <label for="developer_name">Developer Name</label>
+            <input
+                type="text"
+                id="developer_name"
+                name="developer_name"
+                required
+            >
+
+            <label for="email">Email</label>
+            <input
+                type="email"
+                id="email"
+                name="email"
+                required
+            >
+
+            <button type="submit" name="add_developer">
+                Insert Developer
+            </button>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2>Add Project (Child Entity)</h2>
+
+        <form method="POST" action="index.php">
+            <label for="project_name">Project Name</label>
+            <input
+                type="text"
+                id="project_name"
+                name="project_name"
+                required
+            >
+
+            <label for="description">Description</label>
+            <input
+                type="text"
+                id="description"
+                name="description"
+            >
+
+            <label for="developer_id">Assigned Developer</label>
+            <select id="developer_id" name="developer_id" required>
+                <option value="">Select a developer</option>
+
+                <?php foreach ($developers as $developer): ?>
+                    <option value="<?= h($developer["developer_id"]) ?>">
+                        <?= h($developer["developer_name"]) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+
+            <button type="submit" name="add_project">
+                Insert Project
+            </button>
+        </form>
+    </section>
+
+    <section class="card">
+        <h2>Developers — Parent Table</h2>
+
+        <div class="table-wrap">
+            <table>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Actions</th>
+                </tr>
+
+                <?php if (empty($developers)): ?>
+                    <tr>
+                        <td colspan="4">No developers found.</td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($developers as $developer): ?>
+                        <tr>
+                            <td><?= h($developer["developer_id"]) ?></td>
+                            <td><?= h($developer["developer_name"]) ?></td>
+                            <td><?= h($developer["email"]) ?></td>
+                            <td>
+                                <a class="button edit"
+                                   href="update.php?type=developer&amp;id=<?= h($developer["developer_id"]) ?>">
+                                    Edit
+                                </a>
+
+                                <form class="inline-form"
+                                      method="POST"
+                                      action="delete.php"
+                                      onsubmit="return confirm('Delete this developer and their projects?');">
+                                    <input type="hidden" name="type"
+                                           value="developer">
+
+                                    <input type="hidden" name="id"
+                                           value="<?= h($developer["developer_id"]) ?>">
+
+                                    <button class="delete" type="submit">
+                                        Delete
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </table>
+        </div>
+    </section>
+
+    <section class="card">
+        <h2>Projects — Child Table</h2>
+
+        <div class="table-wrap">
+            <table>
+                <tr>
+                    <th>ID</th>
+                    <th>Project Name</th>
+                    <th>Description</th>
+                    <th>Developer</th>
+                    <th>Actions</th>
+                </tr>
+
+                <?php if (empty($projects)): ?>
+                    <tr>
+                        <td colspan="5">No projects found.</td>
+                    </tr>
+                <?php else: ?>
+                    <?php foreach ($projects as $project): ?>
+                        <tr>
+                            <td><?= h($project["project_id"]) ?></td>
+                            <td><?= h($project["project_name"]) ?></td>
+                            <td><?= h($project["description"]) ?></td>
+                            <td><?= h($project["developer_name"]) ?></td>
+                            <td>
+                                <a class="button edit"
+                                   href="update.php?type=project&amp;id=<?= h($project["project_id"]) ?>">
+                                    Edit
+                                </a>
+
+                                <form class="inline-form"
+                                      method="POST"
+                                      action="delete.php"
+                                      onsubmit="return confirm('Delete this project?');">
+                                    <input type="hidden" name="type"
+                                           value="project">
+
+                                    <input type="hidden" name="id"
+                                           value="<?= h($project["project_id"]) ?>">
+
+                                    <button class="delete" type="submit">
+                                        Delete
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </table>
+        </div>
+    </section>
+
+</div>
+</body>
+</html>
